@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+pymupdf
+langchain
+langchain-community
+langchain-openai
+langchain-qdrant
+qdrant-client
+langgraph
+duckduckgo-search
