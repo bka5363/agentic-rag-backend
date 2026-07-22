@@ -39,7 +39,13 @@ class GraphState(TypedDict):
 
 # --- GLOBAL CONFIG ---
 app = FastAPI(title="Agentic RAG API")
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm = ChatOpenAI(
+    model="deepseek-v4-flash",
+    api_key=DEEPSEEK_KEY,
+    base_url="https://api.deepseek.com",
+    temperature=0,
+    model_kwargs={"thinking": {"type": "disabled"}}
+)
 search_tool = DuckDuckGoSearchRun()
 VECTORSTORE = None
 
