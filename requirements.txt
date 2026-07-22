@@ -1,11 +1,12 @@
 fastapi
 uvicorn
 pydantic
-pymupdf
 langchain
-langchain-community
+langchain-core
 langchain-openai
+langchain-community
 langchain-qdrant
 qdrant-client
 langgraph
 ddgs
+fastembed
