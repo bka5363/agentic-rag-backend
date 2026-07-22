@@ -1,21 +1,30 @@
 import os
-import fitz
-import base64
-import time
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 from typing_extensions import TypedDict
 
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_openai import ChatOpenAI
+from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.tools import DuckDuckGoSearchRun
 from langgraph.graph import StateGraph, END
+
+# --- APP INITIALIZATION ---
+app = FastAPI(title="Agentic RAG API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- API MODELS ---
 class ChatIn(BaseModel):
@@ -37,8 +46,9 @@ class GraphState(TypedDict):
     steps: List[str]
     retry_count: int
 
-# --- GLOBAL CONFIG ---
-app = FastAPI(title="Agentic RAG API")
+# --- GLOBAL CONFIG (DEEPSEEK & LOCAL EMBEDDINGS) ---
+DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY")
+
 llm = ChatOpenAI(
     model="deepseek-v4-flash",
     api_key=DEEPSEEK_KEY,
@@ -46,15 +56,23 @@ llm = ChatOpenAI(
     temperature=0,
     model_kwargs={"thinking": {"type": "disabled"}}
 )
+
 search_tool = DuckDuckGoSearchRun()
 VECTORSTORE = None
 
 def get_retriever():
     global VECTORSTORE
     if not VECTORSTORE:
-        embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+        # Lightweight FastEmbed implementation (uses <150MB RAM)
+        embeddings = FastEmbedEmbeddings(
+            model_name="BAAI/bge-small-en-v1.5"
+        )
         client = QdrantClient(path="./qdrant_db")
-        VECTORSTORE = QdrantVectorStore(client=client, collection_name="agentic_rag_openai", embedding=embeddings)
+        VECTORSTORE = QdrantVectorStore(
+            client=client, 
+            collection_name="agentic_rag_bge", 
+            embedding=embeddings
+        )
     return VECTORSTORE.as_retriever(search_kwargs={"k": 4})
 
 # --- LANGGRAPH NODES & EDGES ---
@@ -134,12 +152,13 @@ def get_rag_app():
     workflow.add_conditional_edges("generate", route_after_generate, {"useful": END, "not_grounded": "generate", "not_useful_web": "web_search"})
     return workflow.compile()
 
+RAG_APP = get_rag_app()  # build the graph once, at startup, not per-request
+
 # --- API ENDPOINTS ---
 @app.post("/chat")
 def chat(body: ChatIn):
     try:
-        agent = get_rag_app()
-        result = agent.invoke({"question": body.question})
+        result = RAG_APP.invoke({"question": body.question})
         return {"answer": result.get("generation", "Error generating response."), "steps": result.get("steps", [])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
