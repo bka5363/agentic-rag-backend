@@ -8,4 +8,4 @@ langchain-openai
 langchain-qdrant
 qdrant-client
 langgraph
-duckduckgo-search
+ddgs
